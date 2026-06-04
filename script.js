@@ -1,5 +1,3 @@
-alert("脚本版本：20260604-FINAL-FIX");
-
 // 简单 SPA：数据保存在 localStorage，可管理 车间->机组->房间->点位 的 CRUD
 const view = document.getElementById('view');
 
@@ -117,6 +115,13 @@ async function load(){
       rooms = data.rooms || [];
       points = data.points || [];
       events = data.events || [];
+    } else {
+      // 如果数据库为空，则使用空数组
+      workshops = [];
+      units = [];
+      rooms = [];
+      points = [];
+      events = [];
     }
     // 初始加载后渲染当前路由
     navTo();
@@ -316,7 +321,6 @@ function showConfirm(message, onConfirm, onCancel){
 }
 
 // 机组编辑
-// 机组编辑
 function renderUnits(){
   // 渲染基本结构（select 保留，并仅刷新列表以避免切换时丢失选择）
   const prevSelected = document.getElementById('workshopForUnit')?.value;
@@ -474,7 +478,7 @@ function renderPoints(){
   const body = document.getElementById('pointsBody');
   function refresh(){
     updateRooms(); const rid=Number(roomSelect.value||0); body.innerHTML=''; points.filter(p=>p.roomId===rid).forEach(p=>{const tr=document.createElement('tr'); tr.innerHTML=`<td>${p.name}</td><td>${byId(rooms,p.roomId)?.name||'—'}</td><td class="small"><button data-id="${p.id}" class="edit">编辑</button> <button data-id="${p.id}" class="del">删除</button></td>`; body.appendChild(tr);});
-    body.querySelectorAll('.del').forEach(b=>b.onclick=e=>{const id=Number(e.target.dataset.id); const p=byId(points,id); showConfirm(`确认删除点位 “${p?.name||''}”？`, ()=>{ points=points.filter(x=>x.id!==id); save(); refresh(); });
+    body.querySelectorAll('.del').forEach(b=>b.onclick=e=>{const id=Number(e.target.dataset.id); const p=byId(points,id); showConfirm(`确认删除点位 “${p?.name||''}”？`, ()=>{ points=points.filter(x=>x.id!==id); save(); refresh(); });});
     body.querySelectorAll('.edit').forEach(b=>b.onclick=e=>{
       const p=byId(points,e.target.dataset.id);
       const tr = e.target.closest('tr'); const nameTd = tr.children[0]; const roomTd = tr.children[1]; const valTd = tr.children[2]; const opsTd = tr.children[3];
@@ -785,4 +789,3 @@ function renderRoute(route){
   else if(route==='stats') renderStats();
   else renderWorkshops();
 }
-
