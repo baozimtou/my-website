@@ -487,8 +487,7 @@ function renderPoints(){
     });
   }
   document.getElementById('pointName').addEventListener('input', e=> clearInlineError(e.target));
-  document.getElementById('addPoint').onclick=()=>{const input=document.getElementById('pointName'); const name=input.value.trim(); const rid=Number(roomSelect.value); clearInlineError(input); if(!name){ showInlineError(input,'请输入点位名'); return; } const roomName = byId(rooms,rid)?.name||''; showConfirm(`确认在房间 “${roomName}” 下添加点位 “${name}”？`, ()=>{ points.push({id:nextId(points),roomId:rid,name}); save(); refresh(); showToast('添加点位成功'); });
-  };
+  document.getElementById('addPoint').onclick=()=>{const input=document.getElementById('pointName'); const name=input.value.trim(); const rid=Number(roomSelect.value); clearInlineError(input); if(!name){ showInlineError(input,'请输入点位名'); return; } const roomName = byId(rooms,rid)?.name||''; showConfirm(`确认在房间 “${roomName}” 下添加点位 “${name}”？`, ()=>{ points.push({id:nextId(points),roomId:rid,name}); save(); refresh(); showToast('添加点位成功'); }); };
   selectWorkshop.onchange=()=>{ updateUnits(); updateRooms(); refresh(); };
   unitForPoint.onchange=()=>{ updateRooms(); refresh(); };
   roomSelect.onchange=refresh; updateUnits(); updateRooms(); refresh();
