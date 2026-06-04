@@ -1,7 +1,23 @@
 // 简单 SPA：数据保存在 localStorage，可管理 车间->机组->房间->点位 的 CRUD
 const view = document.getElementById('view');
 
-// 数据模型（持久化在 localStorage）
+// Firebase 配置
+const firebaseConfig = {
+  apiKey: "AIzaSyDXN8wLdUvqTvrHQe-AuIKOIj0JG58rWQ0",
+  authDomain: "my-website-data-892b4.firebaseapp.com",
+  projectId: "my-website-data-892b4",
+  storageBucket: "my-website-data-892b4.appspot.com",
+  messagingSenderId: "343696910442",
+  appId: "1:343696910442:web:33add924b6529376444213",
+  measurementId: "G-RJET64PGF2",
+  databaseURL: "https://my-website-data-892b4-default-rtdb.firebaseio.com" // 添加你的数据库 URL
+};
+
+// 初始化 Firebase
+firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
+
+// 数据模型
 let workshops = [];
 let units = [];
 let rooms = [];
@@ -9,30 +25,54 @@ let points = [];
 let events = []; // {id,type:'unit'|'point',targetId,action:'on'|'off'|'blocked',at:ISO}
 
 function load(){
-  try{
-    workshops = JSON.parse(localStorage.getItem('workshops')||'[]');
-    units = JSON.parse(localStorage.getItem('units')||'[]');
-    rooms = JSON.parse(localStorage.getItem('rooms')||'[]');
-    points = JSON.parse(localStorage.getItem('points')||'[]');
-    events = JSON.parse(localStorage.getItem('events')||'[]');
-    // 清理历史数据：移除旧版点位对象中的 value 字段（如果存在）
-    try{
-      let cleaned = false;
-      if(Array.isArray(points)){
-        points.forEach(p=>{ if(p && Object.prototype.hasOwnProperty.call(p,'value')){ delete p.value; cleaned = true; } });
-      }
-      if(cleaned){ localStorage.setItem('points', JSON.stringify(points)); console.log('清理历史点位字段: 已移除 value 字段'); }
-    }catch(_){ /* ignore migration errors */ }
-  }catch(e){workshops=[];units=[];rooms=[];points=[]}
+  database.ref().once('value', (snapshot) => {
+    const data = snapshot.val();
+    if (data) {
+      workshops = data.workshops || [];
+      units = data.units || [];
+      rooms = data.rooms || [];
+      points = data.points || [];
+      events = data.events || [];
+    } else {
+      // 如果数据库为空，则使用空数组
+      workshops = [];
+      units = [];
+      rooms = [];
+      points = [];
+      events = [];
+    }
+    // 初始加载后渲染当前路由
+    navTo();
+  });
 }
-// 立即加载（不自动填充示例数据）
+
+// 监听数据库变化，实现实时同步
+database.ref().on('value', (snapshot) => {
+  const data = snapshot.val();
+  if (data) {
+    workshops = data.workshops || [];
+    units = data.units || [];
+    rooms = data.rooms || [];
+    points = data.points || [];
+    events = data.events || [];
+  }
+  // 数据变化时重新渲染当前视图
+  const currentHash = location.hash || '#workshops';
+  renderRoute(currentHash.replace('#', ''));
+  console.log('Data synced from Firebase');
+});
+
+// 立即加载
 load();
+
 function save(){
-  localStorage.setItem('workshops',JSON.stringify(workshops));
-  localStorage.setItem('units',JSON.stringify(units));
-  localStorage.setItem('rooms',JSON.stringify(rooms));
-  localStorage.setItem('points',JSON.stringify(points));
-  localStorage.setItem('events',JSON.stringify(events));
+  database.ref().set({
+    workshops: workshops,
+    units: units,
+    rooms: rooms,
+    points: points,
+    events: events
+  });
 }
 
 function navTo(hash){
@@ -583,17 +623,19 @@ function renderWorkshops(){
       }catch(e){ showToast('导入失败：无效 JSON','error'); }
     } });
   };
-  body.querySelectorAll('.del').forEach(b=>b.onclick=e=>{ const id=Number(e.target.dataset.id); const w = byId(workshops,id); showConfirm(`确认删除车间 “${w?.name||''}”？此操作会删除该车间下所有机组/房间/点位。`, ()=>{ workshops=workshops.filter(x=>x.id!==id); const removedUnits = units.filter(u=>u.workshopId===id).map(u=>u.id); units = units.filter(u=>u.workshopId!==id); const removedRooms = rooms.filter(r=>removedUnits.includes(r.unitId)).map(r=>r.id); rooms = rooms.filter(r=>!removedRooms.includes(r.id)); points = points.filter(p=>!removedRooms.includes(p.roomId)); save(); renderWorkshops(); }); });
-  body.querySelectorAll('.edit').forEach(b=>b.onclick=e=>{
-    const w=byId(workshops,e.target.dataset.id);
-    const tr = e.target.closest('tr'); const nameTd = tr.children[0]; const opsTd = tr.children[1];
-    nameTd.innerHTML = `<input class="inline-edit" value="${w.name}">`;
-    opsTd.innerHTML = `<button class="save">保存</button> <button class="cancel">取消</button>`;
-    const input = nameTd.querySelector('input'); input.focus();
-    input.addEventListener('keydown',(ev)=>{ if(ev.key==='Enter'){ ev.preventDefault(); opsTd.querySelector('.save').click(); } else if(ev.key==='Escape'){ ev.preventDefault(); opsTd.querySelector('.cancel').click(); } });
-    opsTd.querySelector('.save').onclick = ()=>{ const v = input.value.trim(); if(!v){ showInlineError(input,'请输入车间名'); return; } w.name = v; save(); renderWorkshops(); };
-    opsTd.querySelector('.cancel').onclick = ()=>{ renderWorkshops(); };
-  });
+  body.querySelectorAll('.del').forEach(b=>b.onclick=e=>{ const id=Number(e.target.dataset.id); const w = byId(workshops,id); showConfirm(`确认删除车间 “${w?.name||''}”？此操作会删除该车间下所有机组/房间/点位。`, ()=>{ workshops=workshops.filter(x=>x.id!==id); const removedUnits = units.filter(u=>u.workshopId===id).map(u=>u.id); units = units.filter(u=>u.workshopId!==id); const removedRooms = rooms.filter(r=>removedUnits.includes(r.unitId)).map(r=>r.id); rooms = rooms.filter(r=>!removedRooms.includes(r.id)); points = points.filter(p=>!removedRooms.includes(p.roomId));
+        save(); renderWorkshops(); });
+    });
+    body.querySelectorAll('.edit').forEach(b=>b.onclick=e=>{
+      const w=byId(workshops,e.target.dataset.id);
+      const tr = e.target.closest('tr'); const nameTd = tr.children[0]; const opsTd = tr.children[1];
+      nameTd.innerHTML = `<input class="inline-edit" value="${w.name}">`;
+      opsTd.innerHTML = `<button class="save">保存</button> <button class="cancel">取消</button>`;
+      const input = nameTd.querySelector('input'); input.focus();
+      input.addEventListener('keydown',(ev)=>{ if(ev.key==='Enter'){ ev.preventDefault(); opsTd.querySelector('.save').click(); } else if(ev.key==='Escape'){ ev.preventDefault(); opsTd.querySelector('.cancel').click(); } });
+      opsTd.querySelector('.save').onclick = ()=>{ const v = input.value.trim(); if(!v){ showInlineError(input,'请输入车间名'); return; } w.name = v; save(); renderWorkshops(); };
+      opsTd.querySelector('.cancel').onclick = ()=>{ renderWorkshops(); };
+    });
 }
 
 // 导航默认：如果存在车间页则访问车间，否则机组
