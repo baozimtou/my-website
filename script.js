@@ -1,10 +1,7 @@
 // 简单 SPA：数据保存在 localStorage，可管理 车间->机组->房间->点位 的 CRUD
 const view = document.getElementById('view');
 
-// --- 后端适配层 ---
-let primaryDbProvider; // 用于读取和监听的主数据库
 let firebaseProvider;
-let cloudbaseProvider;
 
 // Firebase 配置
 const firebaseConfig = {
@@ -16,11 +13,6 @@ const firebaseConfig = {
   appId: "1:343696910442:web:33add924b6529376444213",
   measurementId: "G-RJET64PGF2",
   databaseURL: "https://my-website-data-892b4-default-rtdb.firebaseio.com" // 添加你的数据库 URL
-};
-
-// CloudBase 配置
-const cloudbaseConfig = {
-  env: "web-ces-d4gm3kao45fe7ae00" // 你的 CloudBase 环境 ID
 };
 
 // 初始化后端
@@ -48,49 +40,6 @@ function initializeBackend() {
         console.error("Firebase 初始化失败:", error);
     }
   }
-
-  // 尝试初始化 CloudBase
-  try {
-    if (typeof cloudbase !== 'undefined') {
-        const cbm = cloudbase.init(cloudbaseConfig);
-        const db = cbm.database();
-        const dataDoc = db.collection('web_data').doc('main');
-
-        cloudbaseProvider = {
-            load: () => dataDoc.get().then(res => res.data.data),
-            save: (data) => dataDoc.set({ data: data }),
-            listen: (callback) => {
-                dataDoc.watch(snapshot => {
-                    // 确保 snapshot.docs[0].data 存在
-                    if (snapshot.docs && snapshot.docs.length > 0 && snapshot.docs[0].data) {
-                        callback(snapshot.docs[0].data);
-                    } else if (snapshot.docs && snapshot.docs.length > 0) {
-                        // 处理文档存在但数据为空的情况
-                        callback(null);
-                    }
-                });
-            }
-        };
-        console.log("CloudBase provider initialized.");
-    } else {
-        console.log("CloudBase SDK not loaded, skipping initialization.");
-    }
-  } catch (error) {
-      console.error("CloudBase 初始化失败:", error);
-  }
-
-  // 根据加载情况决定主数据源 (用于读取)
-  // 优先 Firebase，如果 Firebase SDK 加载失败或初始化失败，则使用 CloudBase
-  if (typeof backendType !== 'undefined' && backendType === 'cloudbase') {
-      primaryDbProvider = cloudbaseProvider;
-      console.log("Primary DB for reads: CloudBase");
-  } else if (firebaseProvider) {
-      primaryDbProvider = firebaseProvider;
-      console.log("Primary DB for reads: Firebase");
-  } else {
-      primaryDbProvider = cloudbaseProvider;
-      console.log("Fallback Primary DB for reads: CloudBase");
-  }
 }
 
 
@@ -102,13 +51,13 @@ let points = [];
 let events = []; // {id,type:'unit'|'point',targetId,action:'on'|'off'|'blocked',at:ISO}
 
 async function load(){
-  if (!primaryDbProvider) {
+  if (!firebaseProvider) {
     console.error("主数据库提供者未初始化。");
     showToast("数据库服务未就绪，无法加载数据。", "error");
     return;
   }
   try {
-    const data = await primaryDbProvider.load();
+    const data = await firebaseProvider.load();
     if (data) {
       workshops = data.workshops || [];
       units = data.units || [];
@@ -135,8 +84,8 @@ async function load(){
 
 // 监听数据库变化，实现实时同步
 function listenForChanges() {
-    if (!primaryDbProvider || !primaryDbProvider.listen) return;
-    primaryDbProvider.listen((data) => {
+  if (!firebaseProvider || !firebaseProvider.listen) return;
+  firebaseProvider.listen((data) => {
         if (data) {
             workshops = data.workshops || [];
             units = data.units || [];
@@ -147,7 +96,7 @@ function listenForChanges() {
         // 数据变化时重新渲染当前视图
         const currentHash = location.hash || '#workshops';
         renderRoute(currentHash.replace('#', ''));
-        console.log(`Data synced from primary provider.`);
+    console.log(`Data synced from Firebase.`);
     });
 }
 
@@ -167,53 +116,19 @@ async function save(){
     events: events
   };
 
-  const writePromises = [];
-
-  if (firebaseProvider) {
-    writePromises.push(
-      firebaseProvider.save(dataToSave)
-        .then(() => console.log("数据已保存到 Firebase"))
-        .catch(err => {
-          console.error("保存到 Firebase 失败:", err);
-          showToast("与 Firebase 同步失败。", "error");
-          // 抛出错误以便 Promise.all 捕获
-          throw err;
-        })
-    );
-  }
-
-  if (cloudbaseProvider) {
-    writePromises.push(
-      cloudbaseProvider.save(dataToSave)
-        .then(() => console.log("数据已保存到 CloudBase"))
-        .catch(err => {
-          console.error("保存到 CloudBase 失败:", err);
-          showToast("与 CloudBase 同步失败。", "error");
-          throw err;
-        })
-    );
-  }
-
-  if (writePromises.length === 0) {
+  if (!firebaseProvider) {
     console.error("没有可用的数据库提供者来保存数据。");
     showToast("数据库服务未连接，无法保存。", "error");
     return;
   }
 
   try {
-    // Promise.allSettled 确保即使一个失败，另一个也会继续
-    const results = await Promise.allSettled(writePromises);
-    
-    const failed = results.filter(r => r.status === 'rejected');
-    if (failed.length === 0) {
-      console.log("数据已成功同步到所有配置的数据库。");
-    } else {
-      console.warn(`有 ${failed.length} 个数据库写入失败。`);
-    }
+    await firebaseProvider.save(dataToSave);
+    console.log("数据已保存到 Firebase");
 
   } catch (error) {
-    // allSettled 不会进入这里的 catch, 但保留以防万一
-    console.error("数据保存时发生意外错误:", error);
+    console.error("保存到 Firebase 失败:", error);
+    showToast("与 Firebase 同步失败。", "error");
   }
 }
 

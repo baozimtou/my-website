@@ -34,26 +34,9 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js" onerror="onFirebaseLoadError()"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js" onerror="onFirebaseLoadError()"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
 
-  <!-- Tencent CloudBase SDK -->
-  <script src="https://imgcache.qq.com/qcloud/cloudbase-js-sdk/1.3.0/cloudbase.full.js"></script>
-
-  <script>
-    let backendType = 'firebase'; // 默认使用 firebase
-    let firebaseLoadError = false;
-
-    function onFirebaseLoadError() {
-      if (firebaseLoadError) return; // 避免重复执行
-      firebaseLoadError = true;
-      console.log("Firebase SDK加载失败，切换到腾讯 CloudBase。");
-      backendType = 'cloudbase';
-      // 由于主脚本是 defer/async，我们需要确保在它执行前设置好 backendType
-      // 如果 script.js 是同步加载，这里的逻辑需要调整
-    }
-  </script>
-
-  <script src="script.js?v=20260604-3"></script>
+  <script src="script.js?v=20260604-4"></script>
 </body>
 </html>
