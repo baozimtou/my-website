@@ -1,0 +1,10 @@
+{
+  "name": "my-website",
+  "version": "1.0.0",
+  "description": "A simple static website.",
+  "scripts": {
+    "build": ":"
+  },
+  "author": "",
+  "license": "ISC"
+}
