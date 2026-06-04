@@ -1,3 +1,5 @@
+alert("脚本版本：20260604-FINAL-FIX");
+
 // 简单 SPA：数据保存在 localStorage，可管理 车间->机组->房间->点位 的 CRUD
 const view = document.getElementById('view');
 
