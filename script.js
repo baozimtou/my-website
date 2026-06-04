@@ -1,1 +1,1 @@
-document.body.innerHTML = '<h1>诊断脚本已执行</h1>';
+document.body.innerHTML = '<h1 style="font-size:48px;color:#0a7">诊断脚本已执行 v2</h1><p style="font-size:22px">如果你看到这行，说明 CloudBase 已经覆盖到最新文件。</p>';
