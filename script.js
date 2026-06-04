@@ -1,6 +1,11 @@
 // 简单 SPA：数据保存在 localStorage，可管理 车间->机组->房间->点位 的 CRUD
 const view = document.getElementById('view');
 
+// --- 后端适配层 ---
+let primaryDbProvider; // 用于读取和监听的主数据库
+let firebaseProvider;
+let cloudbaseProvider;
+
 // Firebase 配置
 const firebaseConfig = {
   apiKey: "AIzaSyDXN8wLdUvqTvrHQe-AuIKOIj0JG58rWQ0",
@@ -13,9 +18,81 @@ const firebaseConfig = {
   databaseURL: "https://my-website-data-892b4-default-rtdb.firebaseio.com" // 添加你的数据库 URL
 };
 
-// 初始化 Firebase
-firebase.initializeApp(firebaseConfig);
-const database = firebase.database();
+// CloudBase 配置
+const cloudbaseConfig = {
+  env: "web-ces-d4gm3kao45fe7ae00" // 你的 CloudBase 环境 ID
+};
+
+// 初始化后端
+function initializeBackend() {
+  // 尝试初始化 Firebase
+  try {
+    // 检查 firebase 对象是否存在
+    if (typeof firebase !== 'undefined' && firebase.app) {
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        firebaseProvider = {
+            load: () => database.ref().once('value').then(snapshot => snapshot.val()),
+            save: (data) => database.ref().set(data),
+            listen: (callback) => database.ref().on('value', (snapshot) => callback(snapshot.val()))
+        };
+        console.log("Firebase provider initialized.");
+    } else {
+        console.log("Firebase SDK not loaded, skipping initialization.");
+    }
+  } catch (error) {
+    // 捕获重复初始化等错误
+    if (error.code === 'app/duplicate-app') {
+        console.log("Firebase already initialized.");
+    } else {
+        console.error("Firebase 初始化失败:", error);
+    }
+  }
+
+  // 尝试初始化 CloudBase
+  try {
+    if (typeof cloudbase !== 'undefined') {
+        const cbm = cloudbase.init(cloudbaseConfig);
+        const db = cbm.database();
+        const dataDoc = db.collection('web_data').doc('main');
+
+        cloudbaseProvider = {
+            load: () => dataDoc.get().then(res => res.data.data),
+            save: (data) => dataDoc.set({ data: data }),
+            listen: (callback) => {
+                dataDoc.watch(snapshot => {
+                    // 确保 snapshot.docs[0].data 存在
+                    if (snapshot.docs && snapshot.docs.length > 0 && snapshot.docs[0].data) {
+                        callback(snapshot.docs[0].data);
+                    } else if (snapshot.docs && snapshot.docs.length > 0) {
+                        // 处理文档存在但数据为空的情况
+                        callback(null);
+                    }
+                });
+            }
+        };
+        console.log("CloudBase provider initialized.");
+    } else {
+        console.log("CloudBase SDK not loaded, skipping initialization.");
+    }
+  } catch (error) {
+      console.error("CloudBase 初始化失败:", error);
+  }
+
+  // 根据加载情况决定主数据源 (用于读取)
+  // 优先 Firebase，如果 Firebase SDK 加载失败或初始化失败，则使用 CloudBase
+  if (typeof backendType !== 'undefined' && backendType === 'cloudbase') {
+      primaryDbProvider = cloudbaseProvider;
+      console.log("Primary DB for reads: CloudBase");
+  } else if (firebaseProvider) {
+      primaryDbProvider = firebaseProvider;
+      console.log("Primary DB for reads: Firebase");
+  } else {
+      primaryDbProvider = cloudbaseProvider;
+      console.log("Fallback Primary DB for reads: CloudBase");
+  }
+}
+
 
 // 数据模型
 let workshops = [];
@@ -24,55 +101,113 @@ let rooms = [];
 let points = [];
 let events = []; // {id,type:'unit'|'point',targetId,action:'on'|'off'|'blocked',at:ISO}
 
-function load(){
-  database.ref().once('value', (snapshot) => {
-    const data = snapshot.val();
+async function load(){
+  if (!primaryDbProvider) {
+    console.error("主数据库提供者未初始化。");
+    showToast("数据库服务未就绪，无法加载数据。", "error");
+    return;
+  }
+  try {
+    const data = await primaryDbProvider.load();
     if (data) {
       workshops = data.workshops || [];
       units = data.units || [];
       rooms = data.rooms || [];
       points = data.points || [];
       events = data.events || [];
-    } else {
-      // 如果数据库为空，则使用空数组
-      workshops = [];
-      units = [];
-      rooms = [];
-      points = [];
-      events = [];
     }
     // 初始加载后渲染当前路由
     navTo();
-  });
+  } catch (error) {
+    console.error("从主后端加载数据失败:", error);
+    showToast("加载数据失败，请检查网络连接。", "error");
+    // 即使加载失败，也尝试渲染一次，以显示基本UI
+    navTo();
+  }
 }
 
 // 监听数据库变化，实现实时同步
-database.ref().on('value', (snapshot) => {
-  const data = snapshot.val();
-  if (data) {
-    workshops = data.workshops || [];
-    units = data.units || [];
-    rooms = data.rooms || [];
-    points = data.points || [];
-    events = data.events || [];
-  }
-  // 数据变化时重新渲染当前视图
-  const currentHash = location.hash || '#workshops';
-  renderRoute(currentHash.replace('#', ''));
-  console.log('Data synced from Firebase');
-});
+function listenForChanges() {
+    if (!primaryDbProvider || !primaryDbProvider.listen) return;
+    primaryDbProvider.listen((data) => {
+        if (data) {
+            workshops = data.workshops || [];
+            units = data.units || [];
+            rooms = data.rooms || [];
+            points = data.points || [];
+            events = data.events || [];
+        }
+        // 数据变化时重新渲染当前视图
+        const currentHash = location.hash || '#workshops';
+        renderRoute(currentHash.replace('#', ''));
+        console.log(`Data synced from primary provider.`);
+    });
+}
+
 
 // 立即加载
+initializeBackend();
 load();
+listenForChanges();
 
-function save(){
-  database.ref().set({
+
+async function save(){
+  const dataToSave = {
     workshops: workshops,
     units: units,
     rooms: rooms,
     points: points,
     events: events
-  });
+  };
+
+  const writePromises = [];
+
+  if (firebaseProvider) {
+    writePromises.push(
+      firebaseProvider.save(dataToSave)
+        .then(() => console.log("数据已保存到 Firebase"))
+        .catch(err => {
+          console.error("保存到 Firebase 失败:", err);
+          showToast("与 Firebase 同步失败。", "error");
+          // 抛出错误以便 Promise.all 捕获
+          throw err;
+        })
+    );
+  }
+
+  if (cloudbaseProvider) {
+    writePromises.push(
+      cloudbaseProvider.save(dataToSave)
+        .then(() => console.log("数据已保存到 CloudBase"))
+        .catch(err => {
+          console.error("保存到 CloudBase 失败:", err);
+          showToast("与 CloudBase 同步失败。", "error");
+          throw err;
+        })
+    );
+  }
+
+  if (writePromises.length === 0) {
+    console.error("没有可用的数据库提供者来保存数据。");
+    showToast("数据库服务未连接，无法保存。", "error");
+    return;
+  }
+
+  try {
+    // Promise.allSettled 确保即使一个失败，另一个也会继续
+    const results = await Promise.allSettled(writePromises);
+    
+    const failed = results.filter(r => r.status === 'rejected');
+    if (failed.length === 0) {
+      console.log("数据已成功同步到所有配置的数据库。");
+    } else {
+      console.warn(`有 ${failed.length} 个数据库写入失败。`);
+    }
+
+  } catch (error) {
+    // allSettled 不会进入这里的 catch, 但保留以防万一
+    console.error("数据保存时发生意外错误:", error);
+  }
 }
 
 function navTo(hash){
@@ -337,7 +472,7 @@ function renderPoints(){
   const body = document.getElementById('pointsBody');
   function refresh(){
     updateRooms(); const rid=Number(roomSelect.value||0); body.innerHTML=''; points.filter(p=>p.roomId===rid).forEach(p=>{const tr=document.createElement('tr'); tr.innerHTML=`<td>${p.name}</td><td>${byId(rooms,p.roomId)?.name||'—'}</td><td class="small"><button data-id="${p.id}" class="edit">编辑</button> <button data-id="${p.id}" class="del">删除</button></td>`; body.appendChild(tr);});
-    body.querySelectorAll('.del').forEach(b=>b.onclick=e=>{const id=Number(e.target.dataset.id); const p=byId(points,id); showConfirm(`确认删除点位 “${p?.name||''}”？`, ()=>{ points=points.filter(x=>x.id!==id); save(); refresh(); });});
+    body.querySelectorAll('.del').forEach(b=>b.onclick=e=>{const id=Number(e.target.dataset.id); const p=byId(points,id); showConfirm(`确认删除点位 “${p?.name||''}”？`, ()=>{ points=points.filter(x=>x.id!==id); save(); refresh(); });
     body.querySelectorAll('.edit').forEach(b=>b.onclick=e=>{
       const p=byId(points,e.target.dataset.id);
       const tr = e.target.closest('tr'); const nameTd = tr.children[0]; const roomTd = tr.children[1]; const valTd = tr.children[2]; const opsTd = tr.children[3];
@@ -352,7 +487,8 @@ function renderPoints(){
     });
   }
   document.getElementById('pointName').addEventListener('input', e=> clearInlineError(e.target));
-  document.getElementById('addPoint').onclick=()=>{const input=document.getElementById('pointName'); const name=input.value.trim(); const rid=Number(roomSelect.value); clearInlineError(input); if(!name){ showInlineError(input,'请输入点位名'); return; } const roomName = byId(rooms,rid)?.name||''; showConfirm(`确认在房间 “${roomName}” 下添加点位 “${name}”？`, ()=>{ points.push({id:nextId(points),roomId:rid,name}); save(); refresh(); showToast('添加点位成功'); }); };
+  document.getElementById('addPoint').onclick=()=>{const input=document.getElementById('pointName'); const name=input.value.trim(); const rid=Number(roomSelect.value); clearInlineError(input); if(!name){ showInlineError(input,'请输入点位名'); return; } const roomName = byId(rooms,rid)?.name||''; showConfirm(`确认在房间 “${roomName}” 下添加点位 “${name}”？`, ()=>{ points.push({id:nextId(points),roomId:rid,name}); save(); refresh(); showToast('添加点位成功'); });
+  };
   selectWorkshop.onchange=()=>{ updateUnits(); updateRooms(); refresh(); };
   unitForPoint.onchange=()=>{ updateRooms(); refresh(); };
   roomSelect.onchange=refresh; updateUnits(); updateRooms(); refresh();
