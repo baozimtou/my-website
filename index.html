@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>示例页面</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <nav class="nav">
+      <a href="#workshops">车间管理</a>
+      <a href="#units">机组编辑</a>
+      <a href="#rooms">房间编辑</a>
+      <a href="#points">点位编辑</a>
+      <a href="#realtime">实时编辑</a>
+      <a href="#stats">统计</a>
+    </nav>
+
+    <section id="view"></section>
+  </div>
+  <!-- 全局模态对话框 -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-content">
+      <h3 id="modalTitle"></h3>
+      <div id="modalBody"></div>
+      <div class="modal-actions">
+        <button id="modalSave">保存</button>
+        <button id="modalCancel">取消</button>
+      </div>
+    </div>
+  </div>
+  <!-- 顶部 toast 容器 -->
+  <div id="toastContainer" class="toast-container"></div>
+  <script src="script.js"></script>
+</body>
+</html>
